@@ -36,7 +36,8 @@ func generateInstructions(instruction chan<- int) {
 }
 
 func pipeline(id int, toPipeline <-chan int, fromPipeline <-chan int, readyForNext <-chan int) {
-	time.Sleep(time.Duration(id))
+	time.Sleep(time.Duration(id*2) * time.Second)
+	fmt.Printf("Duration for: %d\n", id)
 
 }
 
