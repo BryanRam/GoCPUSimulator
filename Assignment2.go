@@ -1,7 +1,8 @@
-// Example CPU execute pipeline - SimpleCPU.go
-// 7873 MAPS
-// Doesn't do much!
-// A.Oram 2017
+//	Assignment 2.go
+// 	7873 MAPS
+// 	Doesn't do much!
+// 	Bradley Ramsay
+//	26004360
 
 package main
 
@@ -44,10 +45,13 @@ func pipeline(id int, toPipeline chan int, fromPipeline chan int, readyForNext c
 		//fmt.Println("Ready for next instruction")
 		readyForNext <- id
 		instruction := <-toPipeline
+		tag := instruction / 10
+		opcode := instruction % 10
+		fmt.Printf("Tag: %d\n", tag)
 		//fmt.Printf("CURRENTLY IN PIPE: %d\n", instruction)
-		time.Sleep(time.Duration(instruction) * time.Second)
+		time.Sleep(time.Duration(opcode) * time.Second)
 		//fmt.Printf("Duration for: %d\t %d\n", id, instruction)
-		fromPipeline <- instruction
+		fromPipeline <- opcode
 		//default:
 
 	}
@@ -55,10 +59,10 @@ func pipeline(id int, toPipeline chan int, fromPipeline chan int, readyForNext c
 }
 
 func dispatcher(fromGenerateToDispatcher <-chan int, toPipeline [numberOfPipelines]chan int, readyForNext [numberOfPipelines]chan int) {
-
+	i := 10
 	for {
 		instruction := <-fromGenerateToDispatcher
-
+		instruction += i
 		/* r1 := <-readyForNext[0]
 		fmt.Println("Down pipe 0:: %d", r1)
 		toPipeline[0] <- instruction
@@ -82,6 +86,7 @@ func dispatcher(fromGenerateToDispatcher <-chan int, toPipeline [numberOfPipelin
 			//fmt.Println("No pipe chosen")
 			//time.Sleep(time.Duration(3) * time.Second)
 		}
+		i += 10
 		//fmt.Println("Something")
 	}
 
@@ -94,6 +99,7 @@ func retireInstruction(fromPipeline [numberOfPipelines]chan int) {
 
 	for { // do forever
 		opcode1 := <-fromPipeline[0]
+
 		fmt.Printf("Retired: %d\n", opcode1) // Report to console
 
 		opcode2 := <-fromPipeline[1]
@@ -105,6 +111,16 @@ func retireInstruction(fromPipeline [numberOfPipelines]chan int) {
 		// opcode := <-fromPipeline
 
 		// fmt.Printf("Retired: %d \n", opcode) // Report to console
+
+	}
+}
+
+func sortInstructions(current chan int, incoming chan int, opcode int) {
+	i := <-current
+	j := <-incoming
+	if j > i {
+		incoming <- i
+		current <- j
 	}
 }
 
@@ -112,11 +128,8 @@ func retireInstruction(fromPipeline [numberOfPipelines]chan int) {
 func readInput() {
 	var button string
 	for {
-		//fmt.Printf("In readInput\n")
+		//read keyboard input
 		fmt.Scan(&button)
-		//reader := bufio.NewReader(os.Stdin)
-		//input, _ := reader.ReadString('\n')
-		//buf.Read([]byte(button))
 
 		if button == "Q" || button == "q" {
 			os.Exit(3)
@@ -134,6 +147,10 @@ func main() {
 
 	// Set up required channel
 	fromGenerateToDispatcher := make(chan int) // channel for flow of generated opcodes
+
+	// current := make(chan int)
+	// incoming := make(chan int)
+
 	//toPipeline := make([]chan int, numberOfPipelines)
 	var toPipeline [numberOfPipelines]chan int
 	for i := range toPipeline {
@@ -147,7 +164,6 @@ func main() {
 
 	}
 
-	//readyForNext[0] = 0
 	var fromPipeline [numberOfPipelines]chan int
 	for i := range fromPipeline {
 		fromPipeline[i] = make(chan int)
@@ -163,9 +179,6 @@ func main() {
 
 	go generateInstructions(fromGenerateToDispatcher)
 
-	// go func() {
-	// 	readyForNext[0] <- 1
-	// }()
 	go dispatcher(fromGenerateToDispatcher, toPipeline, readyForNext)
 	go readInput()
 	go retireInstruction(fromPipeline)
