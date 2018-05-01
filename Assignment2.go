@@ -26,8 +26,8 @@ func generateInstructions(instruction chan<- int) {
 
 	for i := 0; i < 15; i++ { // do a limited number
 
-		//opcode := (rand.Intn(5) + 1) // Randomly generate a new opcode (between 1 and 5)
-		opcode := i // testing that all 15 instructions are generated
+		opcode := (rand.Intn(5) + 1) // Randomly generate a new opcode (between 1 and 5)
+		//opcode := i // testing that all 15 instructions are generated
 
 		fmt.Printf("Instruction: %d\n", opcode) // Report this to console display
 
@@ -35,41 +35,52 @@ func generateInstructions(instruction chan<- int) {
 	}
 }
 
-func pipeline(id int, toPipeline chan int, fromPipeline <-chan int, readyForNext chan<- int) {
+func pipeline(id int, toPipeline chan int, fromPipeline chan int, readyForNext chan<- int) {
 	//Delay execution for the duration of id (using the pipeline's index, but must be replaced with opcode)
-	time.Sleep(time.Duration(id) * time.Second)
-	fmt.Printf("Duration for: %d\n", id)
+	/* time.Sleep(time.Duration(id) * time.Second)
+	fmt.Printf("Duration for: %d\n", id) */
 	//instruction := <-toPipeline
 	for {
+		//fmt.Println("Ready for next instruction")
+		readyForNext <- id
+		instruction := <-toPipeline
+		//fmt.Printf("CURRENTLY IN PIPE: %d\n", instruction)
+		time.Sleep(time.Duration(instruction) * time.Second)
+		//fmt.Printf("Duration for: %d\t %d\n", id, instruction)
+		fromPipeline <- instruction
+		//default:
 
-		select {
-		case <-toPipeline:
-			fmt.Println("Something is in here, opcode: ", <-toPipeline)
-		default:
-			fmt.Println("Ready for next instruction")
-			readyForNext <- id
-		}
 	}
+
 }
 
-func dispatcher(opcodes <-chan int, toPipeline [numberOfPipelines]chan int, readyForNext [numberOfPipelines]chan int) {
+func dispatcher(fromGenerateToDispatcher <-chan int, toPipeline [numberOfPipelines]chan int, readyForNext [numberOfPipelines]chan int) {
 
-	instruction := <-opcodes
 	for {
+		instruction := <-fromGenerateToDispatcher
+
+		/* r1 := <-readyForNext[0]
+		fmt.Println("Down pipe 0:: %d", r1)
+		toPipeline[0] <- instruction
+
+		r2 := <-readyForNext[1]
+		fmt.Println("Down pipe 1:: %d", r2)
+		toPipeline[1] <- instruction
+
+		r3 := <-readyForNext[2]
+		fmt.Println("Down pipe 2:: %d", r3)
+		toPipeline[2] <- instruction */
 
 		select {
 		case <-readyForNext[0]:
-			fmt.Println("Down pipe 000000000000000000000000000")
 			toPipeline[0] <- instruction
 		case <-readyForNext[1]:
-			fmt.Println("Down pipe 1")
 			toPipeline[1] <- instruction
 		case <-readyForNext[2]:
-			fmt.Println("Down pipe 22222222222222222222222222222")
 			toPipeline[2] <- instruction
-		default:
-			fmt.Println("No pipe chosen")
-			time.Sleep(time.Duration(3) * time.Second)
+			//default:
+			//fmt.Println("No pipe chosen")
+			//time.Sleep(time.Duration(3) * time.Second)
 		}
 		//fmt.Println("Something")
 	}
@@ -79,13 +90,21 @@ func dispatcher(opcodes <-chan int, toPipeline [numberOfPipelines]chan int, read
 //--------------------------------------------------------------------------------
 // Retires instructions by writing them to the console
 //--------------------------------------------------------------------------------
-func retireInstruction(retired <-chan int) {
+func retireInstruction(fromPipeline [numberOfPipelines]chan int) {
 
 	for { // do forever
-		// Receive an instruction from the generator
-		opcode := <-retired
+		opcode1 := <-fromPipeline[0]
+		fmt.Printf("Retired: %d\n", opcode1) // Report to console
 
-		fmt.Printf("Retired: %d \n", opcode) // Report to console
+		opcode2 := <-fromPipeline[1]
+		fmt.Printf("Retired 2: %d\n", opcode2) // Report to console
+
+		opcode3 := <-fromPipeline[2]
+		fmt.Printf("Retired 3: %d\n", opcode3) // Report to console
+		// Receive an instruction from the generator
+		// opcode := <-fromPipeline
+
+		// fmt.Printf("Retired: %d \n", opcode) // Report to console
 	}
 }
 
@@ -114,7 +133,7 @@ func main() {
 	rand.Seed(time.Now().Unix()) // Seed the random number generator
 
 	// Set up required channel
-	opcodes := make(chan int) // channel for flow of generated opcodes
+	fromGenerateToDispatcher := make(chan int) // channel for flow of generated opcodes
 	//toPipeline := make([]chan int, numberOfPipelines)
 	var toPipeline [numberOfPipelines]chan int
 	for i := range toPipeline {
@@ -129,8 +148,10 @@ func main() {
 	}
 
 	//readyForNext[0] = 0
-
-	fromPipeline := make([]chan int, numberOfPipelines)
+	var fromPipeline [numberOfPipelines]chan int
+	for i := range fromPipeline {
+		fromPipeline[i] = make(chan int)
+	}
 
 	// Now start the goroutines in parallel.
 	fmt.Printf("Start Go routines...\n")
@@ -140,14 +161,14 @@ func main() {
 		go pipeline(i, toPipeline[i], fromPipeline[i], readyForNext[i])
 	}
 
-	go generateInstructions(opcodes)
+	go generateInstructions(fromGenerateToDispatcher)
 
 	// go func() {
 	// 	readyForNext[0] <- 1
 	// }()
-	go dispatcher(opcodes, toPipeline, readyForNext)
+	go dispatcher(fromGenerateToDispatcher, toPipeline, readyForNext)
 	go readInput()
-	go retireInstruction(opcodes)
+	go retireInstruction(fromPipeline)
 
 	for { // Needed to keep the 'main' process alive!
 	}
