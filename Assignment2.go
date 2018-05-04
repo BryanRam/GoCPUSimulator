@@ -47,11 +47,11 @@ func pipeline(id int, toPipeline chan int, fromPipeline chan int, readyForNext c
 		instruction := <-toPipeline
 		tag := instruction / 10
 		opcode := instruction % 10
-		fmt.Printf("Tag: %d\n", tag)
+		fmt.Printf("Tag: %d Instruction: %d\n", tag, opcode)
 		//fmt.Printf("CURRENTLY IN PIPE: %d\n", instruction)
 		time.Sleep(time.Duration(opcode) * time.Second)
 		//fmt.Printf("Duration for: %d\t %d\n", id, instruction)
-		fromPipeline <- opcode
+		fromPipeline <- instruction
 		//default:
 
 	}
@@ -98,15 +98,25 @@ func dispatcher(fromGenerateToDispatcher <-chan int, toPipeline [numberOfPipelin
 func retireInstruction(fromPipeline [numberOfPipelines]chan int) {
 
 	for { // do forever
-		opcode1 := <-fromPipeline[0]
 
-		fmt.Printf("Retired: %d\n", opcode1) // Report to console
+		go sortInstructions(fromPipeline[0], fromPipeline[1])
+		go sortInstructions(fromPipeline[1], fromPipeline[2])
+		go sortInstructions(fromPipeline[0], fromPipeline[2])
+		//go sortInstructions(fromPipeline[1], fromPipeline[0])
+		pipe1 := <-fromPipeline[0]
+		pipe2 := <-fromPipeline[1]
+		pipe3 := <-fromPipeline[2]
+		opcode1 := pipe1 % 10
+		tag1 := pipe1 / 10
+		opcode2 := pipe2 % 10
+		tag2 := pipe2 / 10
+		opcode3 := pipe3 % 10
+		tag3 := pipe3 / 10
 
-		opcode2 := <-fromPipeline[1]
-		fmt.Printf("Retired 2: %d\n", opcode2) // Report to console
+		fmt.Printf("Retired: %d Tag: %d\n", opcode1, tag1)   // Report to console
+		fmt.Printf("Retired 2: %d Tag: %d\n", opcode2, tag2) // Report to console
+		fmt.Printf("Retired 3: %d Tag: %d\n", opcode3, tag3) // Report to console
 
-		opcode3 := <-fromPipeline[2]
-		fmt.Printf("Retired 3: %d\n", opcode3) // Report to console
 		// Receive an instruction from the generator
 		// opcode := <-fromPipeline
 
@@ -115,13 +125,24 @@ func retireInstruction(fromPipeline [numberOfPipelines]chan int) {
 	}
 }
 
-func sortInstructions(current chan int, incoming chan int, opcode int) {
+func sortInstructions(current chan int, incoming chan int) {
+	//for {
+
 	i := <-current
 	j := <-incoming
-	if j > i {
+	if j < i {
 		incoming <- i
 		current <- j
+
+	} else {
+		incoming <- j
+		current <- i
 	}
+	/* opcode1 := i % 10
+	fmt.Printf("Retired: %d\n", opcode1) // Report to console
+	opcode2 := j % 10
+	fmt.Printf("Retired: %d\n", opcode2) // Report to console */
+	//}
 }
 
 //Takes input from stdin
