@@ -20,7 +20,7 @@ import (
 //////////////////////////////////////////////////////////////////////////////////
 
 //----------------------------------------------------------------------------------
-// Randomly generate an instruction 'opcode' between 1 and 5 and send to the retire function
+// Randomly generate an instruction 'opcode' between 1 and 5 and send to the dispatcher function
 //----------------------------------------------------------------------------------
 
 func generateInstructions(instruction chan<- int) {
@@ -36,29 +36,10 @@ func generateInstructions(instruction chan<- int) {
 	}
 }
 
-func pipeline(id int, toPipeline <-chan int, fromPipeline chan<- int, readyForNext chan<- int) {
-	//Delay execution for the duration of id (using the pipeline's index, but must be replaced with opcode)
-	/* time.Sleep(time.Duration(id) * time.Second)
-	fmt.Printf("Duration for: %d\n", id) */
-	//instruction := <-toPipeline
-	for {
-		//fmt.Println("Ready for next instruction")
-		readyForNext <- id
-		instruction := <-toPipeline
-		tag := instruction / 10
-		opcode := instruction % 10
-		fmt.Printf("Instruction: %d Tag: %d\n", opcode, tag)
-
-		time.Sleep(time.Duration(opcode) * time.Second)
-
-		fromPipeline <- instruction
-		fmt.Printf("pipeline in\n")
-		//default:
-
-	}
-
-}
-
+//------------------------------------------------------------------------------------
+// Gets a generated instruction, then checks each pipeline to see if they are ready to
+// receive an instruction. If yes, then that instruction is sent to the pipeline
+// -----------------------------------------------------------------------------------
 func dispatcher(fromGenerateToDispatcher <-chan int, toPipeline [numberOfPipelines]chan int, readyForNext [numberOfPipelines]chan int) {
 	i := 10
 	for {
@@ -86,7 +67,30 @@ func dispatcher(fromGenerateToDispatcher <-chan int, toPipeline [numberOfPipelin
 
 		}
 		i += 10
-		//fmt.Println("Something")
+
+	}
+
+}
+
+//----------------------------------------------------------------------------------------------
+// Pipeline function tells dispatcher when it is ready to receive an instruction, delays operation for
+// as long as the instruction dictates, then sends that instruction to be retired
+//----------------------------------------------------------------------------------------------
+func pipeline(id int, toPipeline <-chan int, fromPipeline chan<- int, readyForNext chan<- int) {
+
+	for {
+
+		readyForNext <- id
+		instruction := <-toPipeline
+		tag := instruction / 10
+		opcode := instruction % 10
+		fmt.Printf("Instruction: %d Tag: %d\n", opcode, tag)
+		//Delay for opcode seconds
+		time.Sleep(time.Duration(opcode) * time.Second)
+
+		fromPipeline <- instruction
+		fmt.Printf("pipeline in\n")
+
 	}
 
 }
@@ -101,15 +105,34 @@ func retireInstruction(fromPipeline [numberOfPipelines]chan int, sortedPipeInstr
 		//sortInstructions(fromPipeline[0], fromPipeline[1])
 		//sortInstructions(fromPipeline[0], fromPipeline[2])
 		//sortInstructions(fromPipeline[1], fromPipeline[2])
-		goRoutine(fromPipeline, sortedPipeInstructions)
+		for i := 0; i < 2; i++ {
+			go sortInstructions(sortedPipeInstructions[i], sortedPipeInstructions[i+1])
+		}
 
-		tag1 := <-sortedPipeInstructions[0]
-		tag2 := <-sortedPipeInstructions[1]
-		tag3 := <-sortedPipeInstructions[2]
+		// tag1 := <-sortedPipeInstructions[0]
+		// tag2 := <-sortedPipeInstructions[1]
+		// tag3 := <-sortedPipeInstructions[2]
 
-		fmt.Printf("Tag: %d\n", tag1) // Report to console
-		fmt.Printf("Tag: %d\n", tag2) // Report to console
-		fmt.Printf("Tag: %d\n", tag3) // Report to console
+		for {
+			select {
+			case x := <-fromPipeline[0]:
+				sortedPipeInstructions[0] <- x
+
+			case y := <-fromPipeline[1]:
+				sortedPipeInstructions[0] <- y
+
+			case z := <-fromPipeline[2]:
+				sortedPipeInstructions[0] <- z
+
+			case retired := <-sortedPipeInstructions[2]:
+				fmt.Printf("Retired Tag: %d\n", retired/10)
+			}
+
+		}
+
+		/* fmt.Printf("Retired Tag: %d\n", tag1) // Report to console
+		fmt.Printf("Retired Tag: %d\n", tag2) // Report to console
+		fmt.Printf("Retired Tag: %d\n", tag3) // Report to console */
 	}
 }
 
@@ -117,10 +140,10 @@ func retireInstruction(fromPipeline [numberOfPipelines]chan int, sortedPipeInstr
 //goRoutine is just a place to put all the sortInstructions function calls
 //---------------------------------------------------------------------------
 func goRoutine(fromPipeline [numberOfPipelines]chan int, sortedPipeInstructions [numberOfPipelines]chan int) {
-	sortInstructions(fromPipeline[0], fromPipeline[1], sortedPipeInstructions[0], sortedPipeInstructions[1])
-	sortInstructions(fromPipeline[1], fromPipeline[2], sortedPipeInstructions[1], sortedPipeInstructions[2])
-	sortInstructions(fromPipeline[0], fromPipeline[2], sortedPipeInstructions[0], sortedPipeInstructions[2])
-	/*
+	/*sortInstructions(fromPipeline[0], fromPipeline[1], sortedPipeInstructions[0])
+	sortInstructions(fromPipeline[1], fromPipeline[2], sortedPipeInstructions[1])
+	sortInstructions(fromPipeline[0], fromPipeline[2], sortedPipeInstructions[0])
+
 		pipe1 := <-fromPipeline[0]
 		pipe2 := <-fromPipeline[1]
 		pipe3 := <-fromPipeline[2]
@@ -140,25 +163,43 @@ func goRoutine(fromPipeline [numberOfPipelines]chan int, sortedPipeInstructions 
 
 }
 
-func sortInstructions(current <-chan int, incoming <-chan int, sortedFirst chan<- int, sortedSecond chan<- int) {
+func sortInstructions(incoming chan int, current chan int) { //, sortedSecond chan<- int incoming <-chan int, /*, sortedFirst chan<- int*/
 
 	fmt.Printf("In sort\n")
 
-	i := <-current
-	j := <-incoming
+	i := <-incoming
 
-	//if j's tag is higher than i's tag, swap them around
-	if (j / 10) < (i / 10) {
-		sortedFirst <- i / 10
-		sortedSecond <- j / 10
+	for {
+		j := <-incoming
 
-		//fmt.Printf("Sorted current: %d incoming: %d \n", j/10, i/10)
-	} else {
-		sortedFirst <- j / 10
-		sortedSecond <- i / 10
+		//if j's tag is higher than i's tag, swap them around
+		if (j / 10) < (i / 10) {
+			current <- j
+			//sortedSecond <- j / 10
 
-		//fmt.Printf("Sorted current: %d incoming: %d \n", i/10, j/10)
+			//fmt.Printf("Sorted current: %d incoming: %d \n", j/10, i/10)
+		} else {
+			current <- i
+			i = j
+
+			//fmt.Printf("Sorted current: %d incoming: %d \n", i/10, j/10)
+		}
+
 	}
+	// j := <-incoming
+
+	// //if j's tag is higher than i's tag, swap them around
+	// if (j / 10) < (i / 10) {
+	// 	sortedFirst <- i / 10
+	// 	sortedSecond <- j / 10
+
+	// 	//fmt.Printf("Sorted current: %d incoming: %d \n", j/10, i/10)
+	// } else {
+	// 	sortedFirst <- j / 10
+	// 	sortedSecond <- i / 10
+
+	// 	//fmt.Printf("Sorted current: %d incoming: %d \n", i/10, j/10)
+	// }
 
 }
 
