@@ -25,22 +25,25 @@ import (
 
 func generateInstructions(instruction chan<- int) {
 
-	for i := 0; i < 15; i++ { // do a limited number
+	for i := 0; i < numberOfInstructions; i++ { // do a limited number
 
 		opcode := (rand.Intn(5) + 1) // Randomly generate a new opcode (between 1 and 5)
 		//opcode := i // testing that all 15 instructions are generated
 
-		fmt.Printf("Instruction: %d\n", opcode) // Report this to console display
+		//fmt.Printf("Instruction: %d\n", opcode) // Report this to console display
 
 		instruction <- opcode // Send the instruction for retirement
+
 	}
+
 }
 
 //------------------------------------------------------------------------------------
 // Gets a generated instruction, then checks each pipeline to see if they are ready to
 // receive an instruction. If yes, then that instruction is sent to the pipeline
 // -----------------------------------------------------------------------------------
-func dispatcher(fromGenerateToDispatcher <-chan int, toPipeline [numberOfPipelines]chan int, readyForNext [numberOfPipelines]chan int) {
+func dispatcher(fromGenerateToDispatcher <-chan int, toPipeline [numberOfPipelines]chan int, readyForNext [numberOfPipelines]chan int,
+	outputGeneratedInstructions []int, outputAssignedGeneratedPipeline []int) {
 	i := 10
 	for {
 		instruction := <-fromGenerateToDispatcher
@@ -60,13 +63,23 @@ func dispatcher(fromGenerateToDispatcher <-chan int, toPipeline [numberOfPipelin
 		select {
 		case <-readyForNext[0]:
 			toPipeline[0] <- instruction
+			outputGeneratedInstructions = append(outputGeneratedInstructions, instruction%10)
+			outputAssignedGeneratedPipeline = append(outputAssignedGeneratedPipeline, 0)
 		case <-readyForNext[1]:
 			toPipeline[1] <- instruction
+			outputGeneratedInstructions = append(outputGeneratedInstructions, instruction%10)
+			outputAssignedGeneratedPipeline = append(outputAssignedGeneratedPipeline, 1)
 		case <-readyForNext[2]:
 			toPipeline[2] <- instruction
+			outputGeneratedInstructions = append(outputGeneratedInstructions, instruction%10)
+			outputAssignedGeneratedPipeline = append(outputAssignedGeneratedPipeline, 2)
 
 		}
 		i += 10
+		if (i / 10) == numberOfInstructions {
+			fmt.Printf("Opcodes:   %v\n", outputGeneratedInstructions)
+			fmt.Printf("Pipelines: %v\n", outputAssignedGeneratedPipeline)
+		}
 
 	}
 
@@ -76,36 +89,74 @@ func dispatcher(fromGenerateToDispatcher <-chan int, toPipeline [numberOfPipelin
 // Pipeline function tells dispatcher when it is ready to receive an instruction, delays operation for
 // as long as the instruction dictates, then sends that instruction to be retired
 //----------------------------------------------------------------------------------------------
-func pipeline(id int, toPipeline <-chan int, fromPipeline chan<- int, readyForNext chan<- int) {
+func pipeline(id int, toPipeline <-chan int, fromPipeline chan<- int, readyForNext chan<- int, outputCompletedInstructions []int, outputAssignedCompletedPipeline []int) {
 
 	for {
 
 		readyForNext <- id
 		instruction := <-toPipeline
-		tag := instruction / 10
+		//tag := instruction / 10
 		opcode := instruction % 10
-		fmt.Printf("Instruction: %d Tag: %d\n", opcode, tag)
+		//fmt.Printf("Instruction: %d Tag: %d\n", opcode, tag)
 		//Delay for opcode seconds
 		time.Sleep(time.Duration(opcode) * time.Second)
 
+		/*select {
+		case id == 0:
+			outputCompletedInstructions = append(outputCompletedInstructions, opcode)
+			outputAssignedCompletedPipeline = append(outputAssignedCompletedPipeline, id)
+		case id == 1:
+			outputCompletedInstructions = append(outputCompletedInstructions, opcode)
+			outputAssignedCompletedPipeline = append(outputAssignedCompletedPipeline, id)
+		case id == 2:
+			outputCompletedInstructions = append(outputCompletedInstructions, opcode)
+			outputAssignedCompletedPipeline = append(outputAssignedCompletedPipeline, id)
+
+		}*/
+		//outputCompletedInstructions = append(outputCompletedInstructions, opcode)
+		//outputAssignedCompletedPipeline = append(outputAssignedCompletedPipeline, id)
+
 		fromPipeline <- instruction
-		fmt.Printf("pipeline in\n")
+
+		/*
+			if (instruction / 10) == numberOfInstructions {
+				fmt.Printf("\nCompleted: %v\n", outputCompletedInstructions)
+				fmt.Printf("\nPipelines: %v\n", outputAssignedCompletedPipeline)
+			}*/
+
+		//go formatCompletedInstructionString(outputCompletedInstructions, outputAssignedCompletedPipeline, id, instruction)
+
+		//fmt.Printf("pipeline in\n")
 
 	}
 
 }
 
+func formatCompletedInstructionString(outputCompletedInstructions []int, outputAssignedCompletedPipeline []int, id int, instruction int) {
+	for {
+		outputCompletedInstructions = append(outputCompletedInstructions, instruction%10)
+		outputAssignedCompletedPipeline = append(outputAssignedCompletedPipeline, id)
+
+		//if (instruction / 10) == numberOfInstructions {
+		fmt.Printf("\nCompleted: %v\n", outputCompletedInstructions)
+		fmt.Printf("\nPipelines: %v\n", outputAssignedCompletedPipeline)
+		//}
+	}
+}
+
 //--------------------------------------------------------------------------------
 // Retires instructions by writing them to the console
 //--------------------------------------------------------------------------------
-func retireInstruction(fromPipeline [numberOfPipelines]chan int, sortedPipeInstructions [numberOfPipelines]chan int) {
+func retireInstruction(fromPipeline [numberOfPipelines]chan int, sortedPipeInstructions [4]chan int,
+	outputRetiredInstructions []int, outputAssignedRetiredPipeline []int,
+	outputCompletedInstructions []int, outputAssignedCompletedPipeline []int) {
 
 	for { // do forever
 
 		//sortInstructions(fromPipeline[0], fromPipeline[1])
 		//sortInstructions(fromPipeline[0], fromPipeline[2])
 		//sortInstructions(fromPipeline[1], fromPipeline[2])
-		for i := 0; i < 2; i++ {
+		for i := 0; i < 3; i++ {
 			go sortInstructions(sortedPipeInstructions[i], sortedPipeInstructions[i+1])
 		}
 
@@ -117,17 +168,27 @@ func retireInstruction(fromPipeline [numberOfPipelines]chan int, sortedPipeInstr
 			select {
 			case x := <-fromPipeline[0]:
 				sortedPipeInstructions[0] <- x
+				outputAssignedRetiredPipeline = append(outputAssignedRetiredPipeline, 0)
 
 			case y := <-fromPipeline[1]:
 				sortedPipeInstructions[0] <- y
+				outputAssignedRetiredPipeline = append(outputAssignedRetiredPipeline, 1)
 
 			case z := <-fromPipeline[2]:
 				sortedPipeInstructions[0] <- z
+				outputAssignedRetiredPipeline = append(outputAssignedRetiredPipeline, 2)
 
-			case retired := <-sortedPipeInstructions[2]:
-				fmt.Printf("Retired Tag: %d\n", retired/10)
+			case retired := <-sortedPipeInstructions[3]:
+				outputRetiredInstructions = append(outputRetiredInstructions, retired%10)
+				//fmt.Printf("\nRetired Tag: %d\n\n", retired/10)
 			}
 
+			if len(outputRetiredInstructions) == (numberOfInstructions - 3) {
+				fmt.Printf("\nCompleted:   %v\n", outputCompletedInstructions)
+				fmt.Printf("Pipelines:   %v\n", outputAssignedCompletedPipeline)
+				fmt.Printf("\n\nRetired:   %v\n", outputRetiredInstructions)
+				fmt.Printf("Pipelines: %v\n", outputAssignedRetiredPipeline)
+			}
 		}
 
 		/* fmt.Printf("Retired Tag: %d\n", tag1) // Report to console
@@ -165,7 +226,7 @@ func goRoutine(fromPipeline [numberOfPipelines]chan int, sortedPipeInstructions 
 
 func sortInstructions(incoming chan int, current chan int) { //, sortedSecond chan<- int incoming <-chan int, /*, sortedFirst chan<- int*/
 
-	fmt.Printf("In sort\n")
+	//fmt.Printf("In sort\n")
 
 	i := <-incoming
 
@@ -173,7 +234,7 @@ func sortInstructions(incoming chan int, current chan int) { //, sortedSecond ch
 		j := <-incoming
 
 		//if j's tag is higher than i's tag, swap them around
-		if (j / 10) < (i / 10) {
+		if (j) < (i) {
 			current <- j
 			//sortedSecond <- j / 10
 
@@ -220,6 +281,7 @@ func readInput() {
 //  Main program, create required channels, then start goroutines in parallel.
 //////////////////////////////////////////////////////////////////////////////////
 const numberOfPipelines = 3
+const numberOfInstructions = 15
 
 func main() {
 	rand.Seed(time.Now().Unix()) // Seed the random number generator
@@ -248,30 +310,39 @@ func main() {
 		fromPipeline[i] = make(chan int)
 	}
 
-	var sortedPipeInstructions [numberOfPipelines]chan int //channel array for sorting retired opcodes before they are displayed
+	var sortedPipeInstructions [4]chan int //channel array for sorting retired opcodes before they are displayed
 	for i := range sortedPipeInstructions {
 		sortedPipeInstructions[i] = make(chan int)
 	}
+
+	outputGeneratedInstructions := make([]int, 0)
+	outputAssignedGeneratedPipeline := make([]int, 0)
+
+	outputCompletedInstructions := make([]int, 0)
+	outputAssignedCompletedPipeline := make([]int, 0)
+
+	outputRetiredInstructions := make([]int, 0)
+	outputAssignedRetiredPipeline := make([]int, 0)
 
 	// Now start the goroutines in parallel.
 	fmt.Printf("Start Go routines...\n")
 
 	//create 3 pipelines
 	for i := 0; i < numberOfPipelines; i++ {
-		go pipeline(i, toPipeline[i], fromPipeline[i], readyForNext[i])
+		go pipeline(i, toPipeline[i], fromPipeline[i], readyForNext[i], outputCompletedInstructions, outputAssignedCompletedPipeline)
 	}
 
 	//generate 15 instructions
 	go generateInstructions(fromGenerateToDispatcher)
 
 	//get those instructions and send them to each pipeline
-	go dispatcher(fromGenerateToDispatcher, toPipeline, readyForNext)
+	go dispatcher(fromGenerateToDispatcher, toPipeline, readyForNext, outputGeneratedInstructions, outputAssignedGeneratedPipeline)
 
 	//check for user input
 	go readInput()
 
 	//receive retired instructions and display them to the screen
-	go retireInstruction(fromPipeline, sortedPipeInstructions)
+	go retireInstruction(fromPipeline, sortedPipeInstructions, outputRetiredInstructions, outputAssignedRetiredPipeline, outputCompletedInstructions, outputAssignedCompletedPipeline)
 
 	for { // Needed to keep the 'main' process alive!
 	}
