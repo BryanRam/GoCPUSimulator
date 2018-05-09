@@ -76,7 +76,7 @@ func dispatcher(fromGenerateToDispatcher <-chan int, toPipeline [numberOfPipelin
 
 		}
 		i += 10
-		if (i / 10) == numberOfInstructions {
+		if (i / 10) == numberOfInstructions+1 {
 			fmt.Printf("Opcodes:   %v\n", outputGeneratedInstructions)
 			fmt.Printf("Pipelines: %v\n", outputAssignedGeneratedPipeline)
 		}
@@ -167,16 +167,22 @@ func retireInstruction(fromPipeline [numberOfPipelines]chan int, sortedPipeInstr
 		for {
 			select {
 			case x := <-fromPipeline[0]:
+				x2 := x
 				sortedPipeInstructions[0] <- x
-				outputAssignedRetiredPipeline = append(outputAssignedRetiredPipeline, 0)
+				outputCompletedInstructions = append(outputCompletedInstructions, x2%10)
+				outputAssignedCompletedPipeline = append(outputAssignedCompletedPipeline, 0)
 
 			case y := <-fromPipeline[1]:
+				y2 := y
 				sortedPipeInstructions[0] <- y
-				outputAssignedRetiredPipeline = append(outputAssignedRetiredPipeline, 1)
+				outputCompletedInstructions = append(outputCompletedInstructions, y2%10)
+				outputAssignedCompletedPipeline = append(outputAssignedCompletedPipeline, 1)
 
 			case z := <-fromPipeline[2]:
+				z2 := z
 				sortedPipeInstructions[0] <- z
-				outputAssignedRetiredPipeline = append(outputAssignedRetiredPipeline, 2)
+				outputCompletedInstructions = append(outputCompletedInstructions, z2%10)
+				outputAssignedCompletedPipeline = append(outputAssignedCompletedPipeline, 2)
 
 			case retired := <-sortedPipeInstructions[3]:
 				outputRetiredInstructions = append(outputRetiredInstructions, retired%10)
@@ -184,10 +190,10 @@ func retireInstruction(fromPipeline [numberOfPipelines]chan int, sortedPipeInstr
 			}
 
 			if len(outputRetiredInstructions) == (numberOfInstructions - 3) {
-				fmt.Printf("\nCompleted:   %v\n", outputCompletedInstructions)
-				fmt.Printf("Pipelines:   %v\n", outputAssignedCompletedPipeline)
+				fmt.Printf("\nCompleted: %v\n", outputCompletedInstructions)
+				fmt.Printf("Pipelines: %v\n", outputAssignedCompletedPipeline)
 				fmt.Printf("\n\nRetired:   %v\n", outputRetiredInstructions)
-				fmt.Printf("Pipelines: %v\n", outputAssignedRetiredPipeline)
+				//fmt.Printf("Pipelines: %v\n", outputAssignedRetiredPipeline)
 			}
 		}
 
