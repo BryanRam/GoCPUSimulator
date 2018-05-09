@@ -192,7 +192,7 @@ func retireInstruction(fromPipeline [numberOfPipelines]chan int, sortedPipeInstr
 			if len(outputRetiredInstructions) == (numberOfInstructions - 3) {
 				fmt.Printf("\nCompleted: %v\n", outputCompletedInstructions)
 				fmt.Printf("Pipelines: %v\n", outputAssignedCompletedPipeline)
-				fmt.Printf("\n\nRetired:   %v\n", outputRetiredInstructions)
+				fmt.Printf("\nRetired:   %v\n", outputRetiredInstructions)
 				//fmt.Printf("Pipelines: %v\n", outputAssignedRetiredPipeline)
 			}
 		}
@@ -230,7 +230,7 @@ func goRoutine(fromPipeline [numberOfPipelines]chan int, sortedPipeInstructions 
 
 }
 
-func sortInstructions(incoming chan int, current chan int) { //, sortedSecond chan<- int incoming <-chan int, /*, sortedFirst chan<- int*/
+func sortInstructions(incoming <-chan int, current chan<- int) { //, sortedSecond chan<- int incoming <-chan int, /*, sortedFirst chan<- int*/
 
 	//fmt.Printf("In sort\n")
 
