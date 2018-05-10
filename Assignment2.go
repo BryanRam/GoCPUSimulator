@@ -40,16 +40,20 @@ func generateInstructions(instruction chan<- int) {
 // -----------------------------------------------------------------------------------
 func dispatcher(fromGenerateToDispatcher <-chan int, toPipeline [numberOfPipelines]chan int, readyForNext [numberOfPipelines]chan int,
 	outputGeneratedInstructions []int, outputAssignedGeneratedPipeline []int) {
-	i := 10
+	//Initialise tag with a value of 10. This will be incremented over the duration of the forever loop
+	tag := 10
 	for {
+		//get instruction from channel
 		instruction := <-fromGenerateToDispatcher
-		instruction += i
+		instruction += tag //append unique tag to it
 
+		//declare a select clause that will listen from each pipeline to see if they are ready to receive an instruction
 		select {
+		//Listen to the readyForNext channels. If they have values, then the corresponding pipeline is ready to receive an instruction
 		case <-readyForNext[0]:
 			toPipeline[0] <- instruction
-			outputGeneratedInstructions = append(outputGeneratedInstructions, instruction%10)
-			outputAssignedGeneratedPipeline = append(outputAssignedGeneratedPipeline, 0)
+			outputGeneratedInstructions = append(outputGeneratedInstructions, instruction%10) //extract instruction and append it to appropriate output
+			outputAssignedGeneratedPipeline = append(outputAssignedGeneratedPipeline, 0)      //do the same for the pipeline used
 		case <-readyForNext[1]:
 			toPipeline[1] <- instruction
 			outputGeneratedInstructions = append(outputGeneratedInstructions, instruction%10)
@@ -60,12 +64,12 @@ func dispatcher(fromGenerateToDispatcher <-chan int, toPipeline [numberOfPipelin
 			outputAssignedGeneratedPipeline = append(outputAssignedGeneratedPipeline, 2)
 
 		}
-		if (i / 10) < numberOfInstructions+1 {
-			i += 10
+		if (tag / 10) < numberOfInstructions+1 {
+			tag += 10 //increment the tag as long as there are still instructions left to generate
 		}
 
-		//Display all generated instructions once that point has been reached
-		if (i / 10) == numberOfInstructions+1 {
+		//Display all generated instructions once no more instructions are pending to be generated
+		if (tag / 10) == numberOfInstructions+1 {
 			fmt.Printf("Opcodes:   %v\n", outputGeneratedInstructions)
 			fmt.Printf("Pipelines: %v\n", outputAssignedGeneratedPipeline)
 		}
@@ -81,16 +85,14 @@ func dispatcher(fromGenerateToDispatcher <-chan int, toPipeline [numberOfPipelin
 func pipeline(id int, toPipeline <-chan int, fromPipeline chan<- int, readyForNext chan<- int) {
 
 	for {
+		readyForNext <- id //indicate that the pipeline is ready for another instruction
 
-		readyForNext <- id
+		instruction := <-toPipeline //take instruction from toPipeline channel
+		opcode := instruction % 10  //extract instruction without tag to execute delay
 
-		instruction := <-toPipeline
-		opcode := instruction % 10
+		time.Sleep(time.Duration(opcode) * time.Second) //Delay for opcode seconds
 
-		//Delay for opcode seconds
-		time.Sleep(time.Duration(opcode) * time.Second)
-
-		fromPipeline <- instruction
+		fromPipeline <- instruction //retire instruction by sending it down the fromPipeline channel
 
 	}
 
@@ -104,35 +106,37 @@ func retireInstruction(fromPipeline [numberOfPipelines]chan int, sortedPipeInstr
 
 	for { // do forever
 
-		for i := 0; i < 3; i++ {
-			go sortInstructions(sortedPipeInstructions[i], sortedPipeInstructions[i+1])
+		for i := 0; i < 3; i++ { //go through the length of sortedPipeInstructions
+			go sortInstructions(sortedPipeInstructions[i], sortedPipeInstructions[i+1]) //call sortInstructions routine
 		}
 
 		for {
+			//Get retired instructions from each pipeline, and transfer them to the first member of sortedPipeInstructions
 			select {
 			case x := <-fromPipeline[0]:
-				x2 := x
 				sortedPipeInstructions[0] <- x
-				outputCompletedInstructions = append(outputCompletedInstructions, x2%10)
-				outputAssignedCompletedPipeline = append(outputAssignedCompletedPipeline, 0)
+				outputCompletedInstructions = append(outputCompletedInstructions, x%10)      //extract instruction and append it to appropriate output
+				outputAssignedCompletedPipeline = append(outputAssignedCompletedPipeline, 0) //do the same for the pipeline used
 
 			case y := <-fromPipeline[1]:
-				y2 := y
 				sortedPipeInstructions[0] <- y
-				outputCompletedInstructions = append(outputCompletedInstructions, y2%10)
+				outputCompletedInstructions = append(outputCompletedInstructions, y%10)
 				outputAssignedCompletedPipeline = append(outputAssignedCompletedPipeline, 1)
 
 			case z := <-fromPipeline[2]:
-				z2 := z
 				sortedPipeInstructions[0] <- z
-				outputCompletedInstructions = append(outputCompletedInstructions, z2%10)
+				outputCompletedInstructions = append(outputCompletedInstructions, z%10)
 				outputAssignedCompletedPipeline = append(outputAssignedCompletedPipeline, 2)
 
-			case retired := <-sortedPipeInstructions[3]:
-				outputRetiredInstructions = append(outputRetiredInstructions, retired%10)
+			case retired := <-sortedPipeInstructions[3]: //extract the sorted instruction
+				outputRetiredInstructions = append(outputRetiredInstructions, retired%10) //append the retired instruction to the array
 
 			}
 
+			/*Three sorted retired instructions will always be left in the other members of the sortedPipeInstructions array.
+			  So display the instructions in order of completion, the pipelines used, as well as the other retired instructions,
+			  in the order that they were originally generated
+			*/
 			if len(outputRetiredInstructions) == (numberOfInstructions - 3) {
 				fmt.Printf("\nCompleted: %v\n", outputCompletedInstructions)
 				fmt.Printf("Pipelines: %v\n", outputAssignedCompletedPipeline)
@@ -144,25 +148,36 @@ func retireInstruction(fromPipeline [numberOfPipelines]chan int, sortedPipeInstr
 	}
 }
 
+//-------------------------------------------------------------
+// sortInstructions is a sorting algorithm that swaps the relies on the nature
+// of channels to get its values
+//-------------------------------------------------------------
 func sortInstructions(incoming <-chan int, current chan<- int) {
-
+	/*Both i and j get the value of the current instruction, however i's value stays
+	  the same as it is declared outside the forever loop (that is, until certain conditions within the loop are met).
+	*/
 	i := <-incoming
 
 	for {
 		j := <-incoming
 
-		//if j's tag is higher than i's tag, swap them around
+		//if j is less than i
 		if (j) < (i) {
-			current <- j
+			current <- j //change the value in the incoming channel with j
 
 		} else {
-			current <- i
-			i = j
+			current <- i //otherwise change the value in the incoming channel with i
+			i = j        //then give i j's value
 
 		}
 
 	}
-
+	/*
+	  Due to the nature of this loop, the sorted value would always end up in the incoming
+	  channel. Since this go routine is called within a for loop on the sortedPipeInstructions array,
+	  this means that the last member of sortedPipeInstructions gets the correctly sorted value upon termination
+	  of the for loop.
+	*/
 }
 
 //Takes input from stdin
@@ -172,17 +187,26 @@ func readInput() {
 		//read keyboard input
 		fmt.Scan(&button)
 
+		//exit the program if q or Q is entered
+		//If run through VS Code, this form of keyboard input
+		//will only be recognised if running an .exe of the program through the terminal
 		if button == "Q" || button == "q" {
+			fmt.Printf("Program terminated.\n")
 			os.Exit(3)
 		}
 	}
 }
 
+/*
+Constant Declarations:
+Define the number of Pipelines and Instructions needed for the program
+*/
+const numberOfPipelines = 3
+const numberOfInstructions = 15
+
 //////////////////////////////////////////////////////////////////////////////////
 //  Main program, create required channels, then start goroutines in parallel.
 //////////////////////////////////////////////////////////////////////////////////
-const numberOfPipelines = 3
-const numberOfInstructions = 15
 
 func main() {
 	rand.Seed(time.Now().Unix()) // Seed the random number generator
@@ -192,7 +216,7 @@ func main() {
 
 	var toPipeline [numberOfPipelines]chan int //channel array for sending a generated opcode to each pipeline
 	for i := range toPipeline {
-		toPipeline[i] = make(chan int)
+		toPipeline[i] = make(chan int) //create int channels for each member of the channel array
 	}
 
 	var readyForNext [numberOfPipelines]chan int //channel array to indicate to the dispatcher that a pipeline is free to receive an opcode
@@ -211,7 +235,13 @@ func main() {
 		sortedPipeInstructions[i] = make(chan int)
 	}
 
-	outputGeneratedInstructions := make([]int, 0)
+	/*
+	  The following "output" variables are int arrays
+	  used to display instructions to the screen at the various states
+	  they take during the operation (Generated, Completed, Retired)
+	  as well as the pipelines used
+	*/
+	outputGeneratedInstructions := make([]int, 0) //int array to hold generat
 	outputAssignedGeneratedPipeline := make([]int, 0)
 
 	outputCompletedInstructions := make([]int, 0)
@@ -221,6 +251,7 @@ func main() {
 
 	// Now start the goroutines in parallel.
 	fmt.Printf("Start Go routines...\n")
+	fmt.Printf("Enter 'q' or 'Q' to quit.\n")
 
 	//create 3 pipelines
 	for i := 0; i < numberOfPipelines; i++ {
